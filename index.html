@@ -61,7 +61,7 @@
     const float WALL_REFLECTIVENESS = 0.07; // Reflectiveness of the walls
     const float CEILING_REFLECTIVENESS = 0.0; // Reflectiveness of the walls
     const float FLOOR_REFLECTIVENESS = 0.01; // Reflectiveness of the walls
-    const float SPHERE_REFLECTIVENESS = 0.2; // Reflectiveness of the spheres
+    const float SPHERE_REFLECTIVENESS = 0.1; // Reflectiveness of the spheres
     
     //=============================================================================================================
     
@@ -88,11 +88,11 @@
         vec3 color; // Color of the light
     };
     
-    
-    struct Test{
-        int oClosestSphereIndex;
-        vec3 oCollisionPoint;
-        bool collided;
+
+    struct Ray{
+      vec3 origin;
+      vec3 direction;
+      int depth;
     };
     
     //=============================================================================================================
@@ -135,6 +135,7 @@
     // Calculates whether a given ray intersects a given sphere, and if it does, returns the
     // time of the collision (i.e., the distance from the origin of the ray to the point of collision).
     // If the ray does not intersect the sphere, returns -1.
+
     float collideWith(Sphere sphere, vec3 rayOrigin, vec3 rayDirection){
         // Calculate b and c values for quadratic equation based on sphere's position,
         // ray's origin and direction, and sphere's radius
@@ -166,8 +167,13 @@
     // Determines which sphere, if any, is the closest to the camera along a given ray.
     // Outputs the index of the closest sphere and the point of collision.
     // Returns true if a collision was found, false otherwise.
-    bool collideWithClosest(Sphere[SPHERE_COUNT] spheres, vec3 rayOrigin, vec3 rayDirection, out int oClosestSphereIndex, out vec3 oCollisionPoint){
+
+    bool collideWithClosest(Sphere[SPHERE_COUNT] spheres, inout Ray ray, out int oClosestSphereIndex, out vec3 oCollisionPoint){
         // Initialize variables to store index and collision time of closest sphere
+
+        vec3 rayOrigin = ray.origin;
+        vec3 rayDirection = ray.direction;
+
         int closestSphereIndex;
         float timeOfClosestCollison = -1.0;
         
@@ -196,76 +202,20 @@
     }
     
     //=============================================================================================================
-    /*
-    struct Test{
-        int oClosestSphereIndex;
-        vec3 oCollisionPoint;
-        bool collided;
-    };
-    */
-    
-    // Determines which sphere, if any, is the closest to the camera along a given ray.
-    // Outputs the index of the closest sphere and the point of collision.
-    // Returns true if a collision was found, false otherwise.
-    Test collideWithClosestTest(Sphere[SPHERE_COUNT] spheres, vec3 rayOrigin, vec3 rayDirection, Test tryMe){
-        // Initialize variables to store index and collision time of closest sphere
-        int closestSphereIndex;
-        float timeOfClosestCollison = -1.0;
-        
-        // Iterate through all spheres
-        for (int i = 0; i < SPHERE_COUNT; i++){
-            // Check if ray collides with current sphere
-            float time = collideWith(spheres[i], rayOrigin, rayDirection);
-            
-            // If there is a collision and it is the closest one so far,
-            // update closestSphereIndex and timeOfClosestCollision
-            if (time != -1.0 && (time < timeOfClosestCollison || timeOfClosestCollison == -1.0)){
-                closestSphereIndex = i;
-                timeOfClosestCollison = time;
-            }
-        }
-        
-        // If there was a collision with any sphere, set output variables and return true
-        if (timeOfClosestCollison != -1.0){
-            tryMe.oClosestSphereIndex = closestSphereIndex;
-            tryMe.oCollisionPoint = rayOrigin + rayDirection*timeOfClosestCollison;
-            tryMe.collided = true;
-            return tryMe;
-        }
-        
-        // If there was no collision, return false
-        return tryMe;
-    }
-    
-    
-    //=============================================================================================================
     
     vec3 getColor(Sphere[SPHERE_COUNT] spheres, vec3 rayOrigin, vec3 rayDirection, Camera camera, Light light){
         vec3 color = backgroundColor;
-        vec3 _rayOrigin = rayOrigin;
-        vec3 _rayDirection = rayDirection;
+        Ray ray = Ray(rayOrigin, rayDirection, 0);
         float reflectiveness;
         
         for (int depth = 0; depth < DEPTH; depth++){
             int hitSphereIndex = -1;
             vec3 collisionPoint = vec3(0.0);
             bool didCollide = false;
-            Test schmutz = Test(hitSphereIndex,collisionPoint,didCollide);
-            /*
-            struct Test{
-                int oClosestSphereIndex;
-                vec3 oCollisionPoint;
-                bool collided;
-            };
-            */
-            //bool rayCollided = collideWithClosest(spheres, _rayOrigin, _rayDirection, hitSphereIndex, collisionPoint);
-            schmutz = collideWithClosestTest(spheres, _rayOrigin, _rayDirection,schmutz);
-            if (schmutz.collided){
-            //if (rayCollided){
-    
-                hitSphereIndex = schmutz.oClosestSphereIndex;
-                collisionPoint = schmutz.oCollisionPoint;
-    
+            
+            bool rayCollided = collideWithClosest(spheres, ray, hitSphereIndex, collisionPoint);
+
+            if (rayCollided){
                 vec3 objectNormalVector = normalize(collisionPoint-spheres[hitSphereIndex].position);
                 vec3 fromObjectToLightVector = normalize(light.position - collisionPoint);
                 float diffuseStrength = max(0.0,dot(fromObjectToLightVector,objectNormalVector));
@@ -284,14 +234,10 @@
                     );
                     reflectiveness*= spheres[hitSphereIndex].reflectiveness;
                 }
-                _rayOrigin = collisionPoint;
-                _rayDirection = reflect(_rayDirection, objectNormalVector);
-                
-                //DEBUG
-                //color = vec3(0.098, 0.6863, 0.1647);
+                ray.origin = collisionPoint;
+                ray.direction = reflect(ray.direction, objectNormalVector);
             }
         }
-        
         
         return color;
     }
@@ -322,9 +268,11 @@
             windowHeight,
             camera
         );
-        for (int number_of_lights = 0; number_of_lights < LIGHT_COUNT; number_of_lights++){
-                color += getColor(spheres, camera.position, rayDirection, camera, light[number_of_lights]);
-                }
+        for (int number_of_lights = 0; number_of_lights < LIGHT_COUNT; number_of_lights++)
+        {
+          color += getColor(spheres, camera.position, rayDirection, camera, light[number_of_lights]);
+        }
+
     #endif
         //color = vec3(0.0);
         return color;
@@ -334,6 +282,7 @@
     
     // Calculates the distance from the projection plane (the plane that the camera's rays
     // will be traced through) to the center of the camera's view
+
     float calculateDistanceFromProjectionPlane(float windowRatio, float fov){
         // Calculate the tangent of half the field of view
         float tangent = 1.0/windowRatio;
