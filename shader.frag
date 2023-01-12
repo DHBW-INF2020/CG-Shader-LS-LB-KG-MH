@@ -2,7 +2,7 @@
     
 // fragment shaders don't have a default precision so we need
 // to pick one. highp is a good default. It means "high precision"
-precision mediump  float;
+precision mediump float;
 
 uniform vec2 u_resolution;
 uniform vec2 u_mouse;
