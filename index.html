@@ -9,7 +9,7 @@
 </head>
 <body>
   <canvas id="canvas"></canvas>
-  <script id="vertex-shader-2d" type="notjs" src="vertexShader.txt">#version 300 es
+  <script id="vertex-shader-2d" type="notjs">#version 300 es
 
     // Position of the pixel
     in vec2 a_position;
@@ -26,7 +26,7 @@
     
         gl_Position = vec4(normalizedPixelPosition, 0, 1);
     }</script>
-  <script id="fragment-shader-wrapper" type="notjs" src="fragmentShaderWrapper.txt">#version 300 es
+  <script id="fragment-shader-wrapper" type="notjs">#version 300 es
 
     // Fragment shaders don't have a default precision so we need
     // to pick one.
@@ -49,7 +49,7 @@
         mainImage(fragColor, fragCoord);
         outColor = fragColor;
     }</script>
-  <script id="fragment-shadertoy-shader-source" type="notjs" src="raytracingShader.txt">// ############### Options ################
+  <script id="fragment-shadertoy-shader-source" type="notjs">// ############### Options ################
 
     const bool ANTIALIASING_ENABLED = true;
     const int SPHERE_COUNT = 8; // Number of spheres to render
