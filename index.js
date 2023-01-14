@@ -1,29 +1,37 @@
 /* eslint no-console:0 consistent-return:0 */
 "use strict";
 
-var vertexShaderSource = document.querySelector("#vertex-shader-2d").text;
-var fragmentShaderSource = document.querySelector("#fragment-shader-2d").text;
-
 function main() {
   // Get A WebGL context
-  var canvas = document.querySelector("#c");
-  var gl = canvas.getContext("webgl2");
+  var canvas = document.querySelector("#canvas");
+  var gl = canvas.getContext("webgl2"); //// WHY 2
   if (!gl) {
+    // Exit if webgl context wasn't able to load
     return;
   }
+
+  // Loading shader sources
+  var vertexShaderSource = document.querySelector("#vertex-shader-2d").text;
+  console.log(vertexShaderSource);
+  var fragmentWrapperShaderSource = document.querySelector("#fragment-shader-wrapper").text;
+  console.log(fragmentWrapperShaderSource);
+  var fragmentShadertoyShaderSource = document.querySelector("#fragment-shadertoy-shader-source").text;
+  console.log(fragmentShadertoyShaderSource);
+  var fragmentShaderSource = fragmentWrapperShaderSource + "\n" + fragmentShadertoyShaderSource;
+
 
   // Use our boilerplate utils to compile the shaders and link into a program
   var program = webglUtils.createProgramFromSources(gl,
       [vertexShaderSource, fragmentShaderSource]);
 
-  // look up where the vertex data needs to go.
+  // Look up where the vertex data needs to go
   var positionAttributeLocation = gl.getAttribLocation(program, "a_position");
 
-  // look up uniform locations
+  // Look up uniform locations
   var resolutionUniformLocation = gl.getUniformLocation(program, "u_vertex_resolution");
-  var fragmentResolutionUniformLocation = gl.getUniformLocation(program, "u_resolution");
-  var mouseUniformLocation = gl.getUniformLocation(program, "u_mouse");
-  var timeUniformLocation = gl.getUniformLocation(program, "u_time");
+  var fragmentResolutionUniformLocation = gl.getUniformLocation(program, "iResolution");
+  var mouseUniformLocation = gl.getUniformLocation(program, "iMouse");
+  var timeUniformLocation = gl.getUniformLocation(program, "iTime");
 
 
   // Create a buffer
@@ -55,21 +63,18 @@ function main() {
   // Tell WebGL how to convert from clip space to pixels
   gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
 
-  // Clear the canvas
-  gl.clearColor(0, 0, 0, 0);
+  // Clear canvas
+  gl.clearColor(1.0, 1.0, 1.0, 1.0);
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-  // Tell it to use our program (pair of shaders)
+  // Tell OpenGL to use the program (pair of shaders)
   gl.useProgram(program);
 
-  // Bind the attribute/buffer set we want.
+  // Bind the attribute/buffer set
   gl.bindVertexArray(vao);
 
-  // Pass in the canvas resolution so we can convert from
-  // pixels to clipspace in the shader
+  // Set all constant uniform values
   gl.uniform2f(resolutionUniformLocation, gl.canvas.width, gl.canvas.height);
-
-
   gl.uniform2f(fragmentResolutionUniformLocation, gl.canvas.width, gl.canvas.height);
   gl.uniform2f(mouseUniformLocation, Math.random(), Math.random());
   
@@ -119,6 +124,12 @@ function setRectangle(gl, x, y, width, height) {
      x2, y1,
      x2, y2,
   ]), gl.STATIC_DRAW);
+}
+
+function readFile(path){
+  var reader = new FileReader();
+  reader.readAsText(path, String);
+  return reader.result;
 }
 
 main();
