@@ -37,6 +37,7 @@
     
     // Shader specific uniforms
     uniform vec3 cameraPosition;
+    uniform vec3 cameraOrientation;
 
     // Shadertoy uniforms
     uniform vec2      iResolution;           // viewport resolution (in pixels)
@@ -313,7 +314,7 @@
         
         Camera camera = Camera(
             vec3(cameraPosition),
-            vec3(0.0, 0.0, 0.0),
+            vec3(cameraOrientation),
             windowRatio,
             calculateDistanceFromProjectionPlane(windowRatio, START_FOV)
         );

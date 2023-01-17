@@ -140,6 +140,7 @@ function main() {
   var mouseUniformLocation = gl.getUniformLocation(program, "iMouse");
   var timeUniformLocation = gl.getUniformLocation(program, "iTime");
   var cameraPositionUniformLocation = gl.getUniformLocation(program, "cameraPosition");
+  var cameraOrientationUniformLocation = gl.getUniformLocation(program, "cameraOrientation");
 
 
   // Create a vertex array object (attribute state)
@@ -183,6 +184,7 @@ function main() {
   gl.uniform2f(fragmentResolutionUniformLocation, gl.canvas.width, gl.canvas.height);
   
   var currentPosition = [0.0, 0.0, 0.0]
+  var currentOrientation = [0.0, 0.0, 0.0]
   var lastTime = 0;
   requestAnimationFrame(drawScene);
 
@@ -196,16 +198,22 @@ function main() {
     gl.uniform2f(mouseUniformLocation, mousePosX, mousePosY);
     gl.uniform1f(timeUniformLocation, timeInSeconds);
     
-    var speed = 3.0;spaceKeyPressed
-    var changeWeight = speed*deltaTime;
-    currentPosition[0] -= leftKeyPressed * changeWeight;
-    currentPosition[0] += rightKeyPressed * changeWeight;
-    currentPosition[1] -= shiftKeyPressed * changeWeight;
-    currentPosition[1] += spaceKeyPressed * changeWeight;
-    currentPosition[2] -= forwardKeyPressed * changeWeight;
-    currentPosition[2] += backwardKeyPressed * changeWeight;
+    var mouseSpeed = 0.01;
+    var mouseSpeedBasedOnFps = deltaTime * mouseSpeed;
+    currentOrientation[0] = mousePosX * mouseSpeed;
+    currentOrientation[1] = mousePosY * mouseSpeed;
+
+    var movementSpeed = 3.0;spaceKeyPressed
+    var movementSpeedBasedOnFps = movementSpeed*deltaTime;
+    currentPosition[0] -= leftKeyPressed * movementSpeedBasedOnFps;
+    currentPosition[0] += rightKeyPressed * movementSpeedBasedOnFps;
+    currentPosition[1] -= shiftKeyPressed * movementSpeedBasedOnFps;
+    currentPosition[1] += spaceKeyPressed * movementSpeedBasedOnFps;
+    currentPosition[2] -= forwardKeyPressed * movementSpeedBasedOnFps;
+    currentPosition[2] += backwardKeyPressed * movementSpeedBasedOnFps;
 
     gl.uniform3f(cameraPositionUniformLocation, currentPosition[0], currentPosition[1], currentPosition[2]);
+    gl.uniform3f(cameraOrientationUniformLocation, currentOrientation[0], currentOrientation[1], currentOrientation[2]);
 
     // Render the scene
     render(gl); 
