@@ -4,10 +4,66 @@
 var mousePosX = 0;
 var mousePosY = 0;
 
-function initMouse(){
+function initMouseInput(){
   onmousemove = function(e){
     mousePosX = e.clientX;
     mousePosY = e.clientY;
+  }
+}
+
+const NOT_PRESSED = 0.0;
+const PRESSED = 1.0;
+
+var forwardKeyPressed = NOT_PRESSED;
+var backwardKeyPressed = NOT_PRESSED;
+var leftKeyPressed = NOT_PRESSED;
+var rightKeyPressed = NOT_PRESSED;
+var spaceKeyPressed = NOT_PRESSED;
+var shiftKeyPressed = NOT_PRESSED;
+
+function initKeyboardInput(){
+  onkeydown = function(e) {
+      console.log(e.key);
+      if(e.key == "w") {
+        forwardKeyPressed = PRESSED;
+      }
+      else if(e.key == "s") {
+        backwardKeyPressed = PRESSED;
+      }
+      else if(e.key == "a") {
+        leftKeyPressed = PRESSED;
+      }
+      else if(e.key == "d") {
+        rightKeyPressed = PRESSED;
+      }
+      else if(e.key == " ") {
+        spaceKeyPressed = PRESSED;
+      }
+      else if(e.key == "Shift") {
+        shiftKeyPressed = PRESSED;
+      }
+  }
+
+  onkeyup = function(e) {
+    console.log(e.key);
+    if(e.key == "w") {
+      forwardKeyPressed = NOT_PRESSED;
+    }
+    else if(e.key == "s") {
+      backwardKeyPressed = NOT_PRESSED;
+    }
+    else if(e.key == "a") {
+      leftKeyPressed = NOT_PRESSED;
+    }
+    else if(e.key == "d") {
+      rightKeyPressed = NOT_PRESSED;
+    }
+    else if(e.key == " ") {
+      spaceKeyPressed = NOT_PRESSED;
+    }
+    else if(e.key == "Shift") {
+      shiftKeyPressed = NOT_PRESSED;
+    }
   }
 }
 
@@ -66,11 +122,12 @@ function setRectangle(gl, x, y, width, height) {
      x2, y1,
      x2, y2,
   ]), gl.STATIC_DRAW);
-}
+}                
 
 function main() {
 
-  initMouse();
+  initMouseInput();
+  initKeyboardInput();
   var gl = initOpenGl();
   var program = compileProgram(gl);
 
@@ -82,6 +139,7 @@ function main() {
   var fragmentResolutionUniformLocation = gl.getUniformLocation(program, "iResolution");
   var mouseUniformLocation = gl.getUniformLocation(program, "iMouse");
   var timeUniformLocation = gl.getUniformLocation(program, "iTime");
+  var cameraPositionUniformLocation = gl.getUniformLocation(program, "cameraPosition");
 
 
   // Create a vertex array object (attribute state)
@@ -124,7 +182,7 @@ function main() {
   gl.uniform2f(vertexResolutionUniformLocation, gl.canvas.width, gl.canvas.height);
   gl.uniform2f(fragmentResolutionUniformLocation, gl.canvas.width, gl.canvas.height);
   
-
+  var currentPosition = [0.0, 0.0, 0.0]
   var lastTime = 0;
   requestAnimationFrame(drawScene);
 
@@ -138,9 +196,19 @@ function main() {
     gl.uniform2f(mouseUniformLocation, mousePosX, mousePosY);
     gl.uniform1f(timeUniformLocation, timeInSeconds);
     
-    // Render the scene
-    render(gl);
+    var speed = 3.0;spaceKeyPressed
+    var changeWeight = speed*deltaTime;
+    currentPosition[0] -= leftKeyPressed * changeWeight;
+    currentPosition[0] += rightKeyPressed * changeWeight;
+    currentPosition[1] -= shiftKeyPressed * changeWeight;
+    currentPosition[1] += spaceKeyPressed * changeWeight;
+    currentPosition[2] -= forwardKeyPressed * changeWeight;
+    currentPosition[2] += backwardKeyPressed * changeWeight;
 
+    gl.uniform3f(cameraPositionUniformLocation, currentPosition[0], currentPosition[1], currentPosition[2]);
+
+    // Render the scene
+    render(gl); 
     requestAnimationFrame(drawScene);
   }
 }

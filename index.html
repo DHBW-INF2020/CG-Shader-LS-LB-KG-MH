@@ -35,6 +35,9 @@
     // Declare an output for the fragment shader
     out vec4 outColor;
     
+    // Shader specific uniforms
+    uniform vec3 cameraPosition;
+
     // Shadertoy uniforms
     uniform vec2      iResolution;           // viewport resolution (in pixels)
     uniform float     iTime;                 // shader playback time (in seconds)
@@ -307,13 +310,12 @@
     {
         float mouseInput = iMouse.x/100.0;
         float windowRatio = iResolution.y/iResolution.x;
-        float fov = START_FOV+sin(iTime-mouseInput)*VARIANCE_FOV;
         
         Camera camera = Camera(
-            vec3(sin(iTime-mouseInput)*5.0,CAMERA_HEIGHT+cos(iTime)/2.0,cos(iTime-mouseInput)*5.0),
-            vec3(sin(iTime/2.0-mouseInput)/8.0-0.15,iTime-mouseInput, sin(iTime-mouseInput)/2.0),
+            vec3(cameraPosition),
+            vec3(0.0, 0.0, 0.0),
             windowRatio,
-            calculateDistanceFromProjectionPlane(windowRatio, fov)
+            calculateDistanceFromProjectionPlane(windowRatio, START_FOV)
         );
         
         Sphere spheres[SPHERE_COUNT] = Sphere[SPHERE_COUNT](
