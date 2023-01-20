@@ -34,15 +34,11 @@
     
     // Declare an output for the fragment shader
     out vec4 outColor;
-    
-    // Shader specific uniforms
-    uniform vec3 cameraPosition;
-    uniform vec3 cameraOrientation;
 
     // Shadertoy uniforms
     uniform vec2      iResolution;           // viewport resolution (in pixels)
     uniform float     iTime;                 // shader playback time (in seconds)
-    uniform vec4      iMouse;                // mouse pixel coords. xy: current (if MLB down), zw: click
+    uniform vec2      iMouse;                // mouse pixel coords. xy
     
     // Shadertoy main method declaration
     void mainImage(out vec4 fragColor, in vec2 fragCoord);
@@ -53,361 +49,396 @@
         mainImage(fragColor, fragCoord);
         outColor = fragColor;
     }</script>
-  <script id="fragment-shadertoy-shader-source" type="notjs">// ############### Options ################
+  <script id="fragment-shadertoy-shader-source" type="notjs">
+    // ############### Options ################
+const bool ANTIALIASING_ENABLED = true;
+const int DEPTH = 3; // Number of times a ray will be reflected
+const float START_FOV = 90.0;
+const float VARIANCE_FOV = 20.0;
+const float CAMERA_HEIGHT = 2.0;
+const float RADIUS_OF_CAMERA_ORBIT = 5.0;
+const float JUMP_HEIGHT = 2.0;
 
-    const bool ANTIALIASING_ENABLED = true;
-    const int SPHERE_COUNT = 8; // Number of spheres to render
-    const int DEPTH = 3; // Number of times a ray will be reflected
-    const float START_FOV = 120.0;
-    const float VARIANCE_FOV = 20.0;
-    const float CAMERA_HEIGHT = 2.0;
+float BIG_SPHERE_RADIUS = 1.0;
+float SMALL_SPHERE_RADIUS = 0.3;
+float MEDIUM_SMALL_SPHERE_RADIUS = 0.4;
+float MEDIUM_BIG_SPHERE_RADIUS = 0.7;
+// ######################################## 
+
+const int SPHERE_COUNT = 10; // Number of spheres to render
+const float NO_COLLISION = -1.0;
+
+vec3 backgroundColor = vec3(0.2,0.2,0.2);
+
+struct Camera{
+    vec3 position;
+    vec3 rotation;
+    float distanceFromProjectionPlane;
+};
+
+struct Sphere{
+    vec3 position;
+    float radius;
+    vec3 color;
+    float ambientStrength;
+    float specularStrength;
+    float shininess;
+    float reflectiveness;
+};
+
+struct Light{
+    vec3 position;
+    vec3 color;
+};
+
+// Calculates the distance from the projection plane (the plane that the camera's rays
+// will be traced through) to the center of the camera's view
+float calculateDistanceFromProjectionPlane(float windowRatio, float fov){
+    float tanResult = tan(radians(fov/2.0));
+    float distanceFromPlane = (windowRatio/(tanResult*2.0));
+    return abs(distanceFromPlane);
+}
+
+// Get the 3d rotation matrix for specific yaw, roll and pitch rotations
+mat3 getRotationMatrix(float xRotation, float yRotation, float zRotation){
+    mat3 xRotationMatrix = mat3(
+        1.0, 0.0, 0.0,
+        0.0, cos(xRotation), -sin(xRotation),
+        0.0, sin(xRotation), cos(xRotation)
+    );
+    mat3 yRotationMatrix = mat3(
+        cos(yRotation), 0.0, sin(yRotation),
+        0.0, 1.0, 0.0,
+        -sin(yRotation), 0.0, cos(yRotation)
+    );
+    mat3 zRotationMatrix = mat3(
+        cos(zRotation), -sin(zRotation), 0.0,
+        sin(zRotation), cos(zRotation), 0.0,
+        0.0, 0.0, 1.0
+    );
     
-    const float WALL_REFLECTIVENESS = 0.1;
-    const float CEILING_REFLECTIVENESS = 0.0;
-    const float FLOOR_REFLECTIVENESS = 0.01;
-    const float SPHERE_REFLECTIVENESS = 0.3;
+    return xRotationMatrix*yRotationMatrix*zRotationMatrix;
+}
+
+// Returns a ray going from the camera to the selected pixel
+// The function also accounts for the rotation of the camera
+vec3 getRay(vec2 fragCoord, float windowWidth, float windowHeight, Camera camera){
+    // Calculate the roation matrix based on the rotation off the camera
+    float xRotation = camera.rotation.x;
+    float yRotation = camera.rotation.y;
+    float zRotation = camera.rotation.z;
+    mat3 rotationMatrix = getRotationMatrix(xRotation, yRotation, zRotation);
     
-    float BIG_SPHERE_RADIUS = 1.0;
-    float SMALL_SPHERE_RADIUS = 0.3;
+    // Calculate the position of the current pixel on the projection plane
+    vec3 pixelPosition = vec3(
+        ((fragCoord.x/windowWidth)-0.5)*windowWidth/windowHeight,
+        (fragCoord.y/windowHeight)-0.5,
+        -camera.distanceFromProjectionPlane
+    );
     
-    // ######################################## 
-    
-    const float NO_COLLISION = -1.0;
-    
-    vec3 backgroundColor = vec3(0.2,0.2,0.2);
-    
-    struct Camera{
-        vec3 position;
-        vec3 rotation;
-        float windowRatio;
-        float distanceFromProjectionPlane;
-    };
-    
-    struct Sphere{
-        vec3 position;
-        float radius;
-        vec3 color;
-        float ambientStrength;
-        float specularStrength;
-        float shininess;
-        float reflectiveness;
-    };
-    
-    struct Light{
-        vec3 position;
-        vec3 color;
-    };
-    
-    // Calculates the distance from the projection plane (the plane that the camera's rays
-    // will be traced through) to the center of the camera's view
-    float calculateDistanceFromProjectionPlane(float windowRatio, float fov){
-        float tangent = 1.0/windowRatio;
-        float alpha = tan(radians(fov/2.0));
-        float distanceFromPlane = tangent/alpha;
-        return abs(distanceFromPlane);
-    }
-    
-    
-    // Get the 3d rotation matrix for specific yaw, roll and pitch rotations
-    mat3 getRotationMatrix(float xRotation, float yRotation, float zRotation){
-        mat3 xRotationMatrix = mat3(
-            1.0, 0.0, 0.0,
-            0.0, cos(xRotation), -sin(xRotation),
-            0.0, sin(xRotation), cos(xRotation)
-        );
-        mat3 yRotationMatrix = mat3(
-            cos(yRotation), 0.0, sin(yRotation),
-            0.0, 1.0, 0.0,
-            -sin(yRotation), 0.0, cos(yRotation)
-        );
-        mat3 zRotationMatrix = mat3(
-            cos(zRotation), -sin(zRotation), 0.0,
-            sin(zRotation), cos(zRotation), 0.0,
-            0.0, 0.0, 1.0
-        );
-        
-        return xRotationMatrix*yRotationMatrix*zRotationMatrix;
-    }
-    
-    // Returns a ray going from the camera to the selected pixel
-    // The function also accounts for the rotation of the camera
-    vec3 getRay(vec2 fragCoord, float windowWidth, float windowHeight, Camera camera){
-        // Calculate the roation matrix based on the rotation off the camera
-        float xRotation = camera.rotation.x;
-        float yRotation = camera.rotation.y;
-        float zRotation = camera.rotation.z;
-        mat3 rotationMatrix = getRotationMatrix(xRotation, yRotation, zRotation);
-        
-        // Calculate the position of the current pixel on the projection plane
-        vec3 pixelPosition = vec3(
-            ((fragCoord.x/windowWidth)-0.5)*windowWidth/windowHeight,
-            (fragCoord.y/windowHeight)-0.5,
-            -camera.distanceFromProjectionPlane
-        );
-        
-        // Rotate the pixel position according to the roation of the camera
-        pixelPosition*=rotationMatrix;
-        return normalize(pixelPosition);
-    }
-    
-    // Calculates the distance to the closest collison with the sphere
-    // If there is no collision, the function returns -1.0
-    float collideWith(Sphere sphere, vec3 rayOrigin, vec3 rayDirection){
-        // Solve the quadratic function
-        float b = 2.0 * dot(rayDirection, rayOrigin - sphere.position);
-        float c = pow(length(rayOrigin - sphere.position), 2.0) - pow(sphere.radius, 2.0);
-        float delta = pow(b, 2.0) - 4.0 * c;
-        if (delta > 0.0){
-            float t2 = (-b - sqrt(delta)) / 2.0;
-            if (t2 > 0.0){
-                // Return the smallest distance (the smallest solution of the quadratic function)
-                return t2;
-            }
+    // Rotate the pixel position according to the roation of the camera
+    pixelPosition*=rotationMatrix;
+    return normalize(pixelPosition);
+}
+
+// Calculates the distance to the closest collison with the sphere
+// If there is no collision, the function returns -1.0
+float collideWith(Sphere sphere, vec3 rayOrigin, vec3 rayDirection){
+    // Solve the quadratic function
+    float b = 2.0 * dot(rayDirection, rayOrigin - sphere.position);
+    float c = pow(length(rayOrigin - sphere.position), 2.0) - pow(sphere.radius, 2.0);
+    float delta = pow(b, 2.0) - 4.0 * c;
+    if (delta > 0.0){
+        float t1 = (-b - sqrt(delta)) / 2.0;
+        if (t1 > 0.0){
+            // Return the smallest distance (the smallest solution of the quadratic function)
+            return t1;
         }
-        return -1.0;
+    }
+    return -1.0;
+}
+
+// Calculates the closest point where a ray collides with one of the spheres
+// "oCollisionPoint" : Closest collision point
+// "oClosestSphereIndex" : Array index of the closest sphere with which the ray collided
+// rayDirection has to be a unit vector
+bool collideWithClosest(Sphere[SPHERE_COUNT] spheres, vec3 rayOrigin, vec3 rayDirection, out int oClosestSphereIndex, out vec3 oCollisionPoint){
+    int closestSphereIndex;
+    float closestDistance = NO_COLLISION;
+    
+    // Iterate through all spheres and check if the sphere is hit by the ray
+    for (int i = 0; i < SPHERE_COUNT; i++){
+        float currentDistance = collideWith(spheres[i], rayOrigin, rayDirection);
+        if (currentDistance != NO_COLLISION && (currentDistance < closestDistance || closestDistance == -1.0)){
+            closestSphereIndex = i;
+            closestDistance = currentDistance;
+        }
     }
     
-    // Calculates the closest point where a ray collides with one of the spheres
-    // "oCollisionPoint" : Closest collision point
-    // "oClosestSphereIndex" : Array index of the closest sphere with which the ray collided
-    // rayDirection has to be a unit vector
-    bool collideWithClosest(Sphere[SPHERE_COUNT] spheres, vec3 rayOrigin, vec3 rayDirection, out int oClosestSphereIndex, out vec3 oCollisionPoint){
-        int closestSphereIndex;
-        float closestDistance = NO_COLLISION;
-        
-        // Iterate through all spheres and check if the sphere is hit by the ray
-        for (int i = 0; i < SPHERE_COUNT; i++){
-            float currentDistance = collideWith(spheres[i], rayOrigin, rayDirection);
-            if (currentDistance != NO_COLLISION && (currentDistance < closestDistance || closestDistance == -1.0)){
-                closestSphereIndex = i;
-                closestDistance = currentDistance;
-            }
-        }
-        
-        // Check if a collision with an object happened
-        if (closestDistance != NO_COLLISION){
-            oClosestSphereIndex = closestSphereIndex;
-            oCollisionPoint = rayOrigin + rayDirection*closestDistance;
+    // Check if a collision with an object happened
+    if (closestDistance != NO_COLLISION){
+        oClosestSphereIndex = closestSphereIndex;
+        oCollisionPoint = rayOrigin + rayDirection*closestDistance;
+        return true;
+    }
+    return false;
+}
+
+// Checks to see if a collision point is in the shadow of an object
+bool isInShadow(Sphere[SPHERE_COUNT] spheres, vec3 collisionPoint, vec3 objectToLightVector, vec3 lightPosition){
+    int closestSphereIndex = 0;
+    vec3 nearestDistancePoint = vec3(0.0);
+    bool rayToLightCollided = collideWithClosest(spheres, collisionPoint, objectToLightVector, closestSphereIndex, nearestDistancePoint);
+    
+    if (rayToLightCollided){
+        float nearestDistance = length(nearestDistancePoint-collisionPoint);
+        float distanceToLight = length(lightPosition - collisionPoint);
+        if(nearestDistance < distanceToLight){
             return true;
         }
-        return false;
     }
+    return false;
+}
+
+// Calculate diffuse strength
+float getDiffuseStrength(vec3 objectToLightVector, vec3 objectNormalVector){
+    return max(0.0,dot(objectToLightVector, objectNormalVector));
+}
+
+// Calculate specular
+float getSpecularStrength(vec3 objectToLightVector, vec3 objectNormalVector, vec3 objectToCameraVector, float shininess){
+    float dotProduct = dot(normalize(reflect(-objectToLightVector, objectNormalVector)), normalize(objectToCameraVector));
+    return pow(max(0.0,dotProduct), shininess);
+}
+
+// Calculates the color for a given point "rayOrigin" in the 3d space
+vec3 getColor(Sphere[SPHERE_COUNT] spheres, vec3 rayOrigin, vec3 rayDirection, Camera camera, Light light){
+    vec3 color = backgroundColor;
+    float reflectiveness, diffuseStrength, specularStrength = 0.0;
     
-    // Checks to see if a collision point is in the shadow of an object
-    bool isInShadow(Sphere[SPHERE_COUNT] spheres, vec3 collisionPoint, vec3 objectToLightVector, vec3 lightPosition){
-        int closestSphereIndex = 0;
-        vec3 nearestDistancePoint = vec3(0.0);
-        bool rayToLightCollided = collideWithClosest(spheres, collisionPoint, objectToLightVector, closestSphereIndex, nearestDistancePoint);
-        
-        if (rayToLightCollided){
-            float nearestDistance = length(nearestDistancePoint-collisionPoint);
-            float distanceToLight = length(lightPosition - collisionPoint);
-            if(nearestDistance < distanceToLight){
-                return true;
-            }
-        }
-        return false;
-    }
-    
-    // Calculate diffuse strength
-    float getDiffuseStrength(vec3 objectToLightVector, vec3 objectNormalVector){
-        return max(0.0,dot(objectToLightVector, objectNormalVector));
-    }
-    
-    // Calculate specular
-    float getSpecularStrength(vec3 objectToLightVector, vec3 objectNormalVector, vec3 objectToCameraVector, float shininess){
-        float dotProduct = dot(objectNormalVector, normalize(objectToLightVector+objectToCameraVector));
-        return pow(max(0.0,dotProduct), shininess);
-    }
-    
-    // Calculates the color for a given point "rayOrigin" in the 3d space
-    vec3 getColor(Sphere[SPHERE_COUNT] spheres, vec3 rayOrigin, vec3 rayDirection, Camera camera, Light light){
-        vec3 color = backgroundColor;
-        float reflectiveness, diffuseStrength, specularStrength = 0.0;
-        
-        // Send out and reflect the ray as many times as its set by "DEPTH"
-        for (int depth = 0; depth < DEPTH; depth++){
-            int hitSphereIndex = -1;
-            vec3 collisionPoint = vec3(0.0);
-            bool rayCollided = collideWithClosest(spheres, rayOrigin, rayDirection, hitSphereIndex, collisionPoint);
-    
-            if (rayCollided){
-                diffuseStrength, specularStrength = 0.0;
+    // Send out and reflect the ray as many times as its set by "DEPTH"
+    for (int depth = 0; depth < DEPTH; depth++){
+        int hitSphereIndex = -1;
+        vec3 collisionPoint = vec3(0.0);
+        bool rayCollided = collideWithClosest(spheres, rayOrigin, rayDirection, hitSphereIndex, collisionPoint);
+
+        if (rayCollided){
+            diffuseStrength, specularStrength = 0.0;
+            
+            vec3 objectNormalVector = normalize(collisionPoint-spheres[hitSphereIndex].position);
+            vec3 objectToLightVector = normalize(light.position - collisionPoint);
+            
+            // Check to see if collisionPoint is in a cast of shadow
+            bool inShadow = isInShadow(spheres, collisionPoint, objectToLightVector, light.position);
+            if(!inShadow){
+                vec3 objectToCameraVector = normalize(camera.position - collisionPoint);
                 
-                vec3 objectNormalVector = normalize(collisionPoint-spheres[hitSphereIndex].position);
-                vec3 objectToLightVector = normalize(light.position - collisionPoint);
-                
-                // Check to see if collisionPoint is in a cast of shadow
-                bool inShadow = isInShadow(spheres, collisionPoint, objectToLightVector, light.position);
-                if(!inShadow){
-                    vec3 objectToCameraVector = normalize(camera.position - collisionPoint);
-                    
-                    // Calculate diffuse and specular strength since collisionPoint is not
-                    // located in a cast of shadow
-                    diffuseStrength = getDiffuseStrength(
-                        objectToLightVector,
-                        objectNormalVector
-                    );
-                    specularStrength = getSpecularStrength(
-                        objectToLightVector, 
-                        objectNormalVector, 
-                        objectToCameraVector, 
-                        spheres[hitSphereIndex].shininess
-                    );
-                }
-                
-                vec3 sphereColor = spheres[hitSphereIndex].color*light.color*(
-                    spheres[hitSphereIndex].ambientStrength + diffuseStrength + spheres[hitSphereIndex].specularStrength*specularStrength
+                // Calculate diffuse and specular strength since collisionPoint is not
+                // located in a cast of shadow
+                diffuseStrength = getDiffuseStrength(
+                    objectToLightVector,
+                    objectNormalVector
                 );
-                if (depth == 0){
-                    color = sphereColor;
-                    reflectiveness = spheres[hitSphereIndex].reflectiveness;
-                } else{
-                    color += reflectiveness*sphereColor;
-                    reflectiveness*= spheres[hitSphereIndex].reflectiveness;
-                }
-                rayOrigin = collisionPoint;
-                rayDirection = reflect(rayDirection, objectNormalVector);
-            }
-        }
-        
-        return color;
-    }
-    
-    // Renders a given pixel with antialiasing
-    // This is done by calculating the color of 9 points in close proximity and
-    // taking the average color value of all of them.
-    vec3 renderWithAntialiasing(vec2 fragCoord, float windowWidth, float windowHeight, Sphere[SPHERE_COUNT] spheres, Camera camera, Light light){
-        vec3 color = vec3(0.0);
-        for(float i = -1.0; i <= 1.0; i++) {
-            for(float j = -1.0; j <= 1.0; j++) {
-                vec3 rayDirection = getRay(
-                    fragCoord+vec2(i*0.3, j*0.3),
-                    windowWidth,
-                    windowHeight,
-                    camera
+                specularStrength = getSpecularStrength(
+                    objectToLightVector, 
+                    objectNormalVector, 
+                    objectToCameraVector, 
+                    spheres[hitSphereIndex].shininess
                 );
-                color += getColor(spheres, camera.position, rayDirection, camera, light);
             }
+            
+            vec3 sphereColor = spheres[hitSphereIndex].color*light.color*(
+                spheres[hitSphereIndex].ambientStrength + diffuseStrength + spheres[hitSphereIndex].specularStrength*specularStrength
+            );
+            if (depth == 0){
+                color = sphereColor;
+                reflectiveness = spheres[hitSphereIndex].reflectiveness;
+            } else{
+                color += reflectiveness*sphereColor;
+                reflectiveness*= spheres[hitSphereIndex].reflectiveness;
+            }
+            rayOrigin = collisionPoint;
+            rayDirection = reflect(rayDirection, objectNormalVector);
         }
-        color /= 9.0;
-        return color;
     }
     
-    // Renders a given pixel without antialiasing
-    vec3 render(vec2 fragCoord, float windowWidth, float windowHeight, Sphere[SPHERE_COUNT] spheres, Camera camera, Light light){
-        vec3 color = vec3(0.0);
-        vec3 rayDirection = getRay(
-            fragCoord,
-            windowWidth,
-            windowHeight,
-            camera
-        );
-        color = getColor(spheres, camera.position, rayDirection, camera, light);
-        return color;
+    return color;
+}
+
+// Renders a given pixel with antialiasing
+// This is done by calculating the color of 9 points in close proximity and
+// taking the average color value of all of them.
+vec3 renderWithAntialiasing(vec2 fragCoord, float windowWidth, float windowHeight, Sphere[SPHERE_COUNT] spheres, Camera camera, Light light){
+    vec3 color = vec3(0.0);
+    for(float i = -1.0; i <= 1.0; i++) {
+        for(float j = -1.0; j <= 1.0; j++) {
+            vec3 rayDirection = getRay(
+                fragCoord+vec2(i*0.3, j*0.3),
+                windowWidth,
+                windowHeight,
+                camera
+            );
+    		color += getColor(spheres, camera.position, rayDirection, camera, light);
+        }
+    }
+    color /= 9.0;
+    return color;
+}
+
+// Renders a given pixel without antialiasing
+vec3 render(vec2 fragCoord, float windowWidth, float windowHeight, Sphere[SPHERE_COUNT] spheres, Camera camera, Light light){
+    vec3 color = vec3(0.0);
+    vec3 rayDirection = getRay(
+        fragCoord,
+        windowWidth,
+        windowHeight,
+        camera
+    );
+    color = getColor(spheres, camera.position, rayDirection, camera, light);
+    return color;
+}
+
+void mainImage(out vec4 fragColor, in vec2 fragCoord )
+{
+    float windowRatio = iResolution.x/iResolution.y;
+    
+    // Mouse input is able to affect the position of the camera
+    float mouseInput = iMouse.x/100.0;
+    // Fov changes overtime
+    float fov = START_FOV+sin(iTime-mouseInput)*VARIANCE_FOV;
+    float alpha = iTime-mouseInput;
+    // Move camera in circles and adjust the rotation of the camera
+    // to create an orbiting effect
+    Camera camera = Camera(
+        vec3(
+            sin(alpha)*RADIUS_OF_CAMERA_ORBIT,
+            CAMERA_HEIGHT + cos(iTime)*0.01,
+            cos(alpha)*RADIUS_OF_CAMERA_ORBIT
+        ),
+        vec3(
+            sin(alpha)*0.1,
+            alpha, 
+            sin(alpha)*0.2
+        ),
+        calculateDistanceFromProjectionPlane(windowRatio, fov)
+    );
+    
+    float BOUNCINESS_SMALL = abs(JUMP_HEIGHT * sin(iTime));
+    float BOUNCINESS_BIG = abs(JUMP_HEIGHT * sin(iTime*1.0*3.0));
+    float BOUNCINESS_MEDIUM_SMALL = abs(JUMP_HEIGHT * sin(iTime*2.0));
+    float BOUNCINESS_MEDIUM_BIG = abs(JUMP_HEIGHT * sin(iTime*1.5));
+    
+    // Create all spheres in the scene
+    Sphere spheres[SPHERE_COUNT] = Sphere[SPHERE_COUNT](
+        Sphere( // Bigger Sphere
+            vec3(-1.0, BOUNCINESS_BIG + BIG_SPHERE_RADIUS,0.0),// position
+            BIG_SPHERE_RADIUS,      // radius 
+            vec3(0.1,0.3,0.7),      // Color
+            0.1,                    // Strength of the ambient lighting on the sphere
+            0.7,                    // Strength of the specular lighting on the sphere
+            128.0,                  // Exponent for the specular lighting on the sphere
+            0.3                     // Reflectiveness of the sphere
+        ),
+        Sphere( // Small Sphere
+            vec3(1.0,BOUNCINESS_SMALL + SMALL_SPHERE_RADIUS,0.0),
+            SMALL_SPHERE_RADIUS,
+            vec3(0.5,0.1,0.4),
+            0.1,
+            0.7,
+            32.0,
+            0.3
+        ),
+        Sphere( // medium small Sphere
+            vec3(-4.0,BOUNCINESS_MEDIUM_SMALL + MEDIUM_SMALL_SPHERE_RADIUS,2.0),
+            MEDIUM_SMALL_SPHERE_RADIUS,
+            vec3(0.2,0.8,0.2),
+            0.2,
+            0.7,
+            32.0,
+            0.3
+        ),
+        Sphere( // medium big Sphere
+            vec3(0.5,BOUNCINESS_MEDIUM_BIG + MEDIUM_BIG_SPHERE_RADIUS,4.3),
+            MEDIUM_BIG_SPHERE_RADIUS,
+            vec3(0.1,0.1,0.1),
+            0.5,
+            0.7,
+            32.0,
+            1.0
+        ),
+        Sphere( // Floor
+            vec3(0.0,-9000.0,0.0),
+            9000.0,
+            vec3(0.9,0.9,0.9),
+            0.1,
+            0.8,
+            128.0,
+            0.1
+        ),
+        Sphere( // Ceiling
+            vec3(0.0,9005.0,0.0),
+            9000.0,
+            vec3(0.9,0.9,0.9),
+            0.1,
+            0.8,
+            128.0,
+            0.1
+        ),
+        Sphere( // Left Wall 
+            vec3(-9005.0,0.0,0.0),
+            9000.0,
+            vec3(1.0, 0.0, 0.0),
+            0.1,
+            0.8,
+            128.0,
+            0.3
+        ),
+        Sphere( // Right Wall
+            vec3(9005.0,0.0,0.0),
+            9000.0,
+            vec3(0.0, 0.0, 1.0),
+            0.1,
+            0.8,
+            128.0,
+            0.3
+        ),
+        Sphere( // Front Wall
+            vec3(0.0,0.0,-9005.0),
+            9000.0,
+            vec3(0.9,0.9,0.9),
+            0.1,
+            0.8,
+            128.0,
+            0.3
+        ),
+        Sphere( // Back Wall
+            vec3(0.0,0.0,+9015.0),
+            9000.0,
+            vec3(0.9,0.9,0.9),
+            0.1,
+            0.8,
+            128.0,
+            0.5
+        )
+     );
+     
+     // Create the light in the scene
+     Light light = Light(
+         vec3(3.0,3.0,3.0),
+         vec3(1.0,1.0,1.0)
+     );
+
+    // Render the pixel according to the settings
+    vec3 colorOfPixel;
+    if(ANTIALIASING_ENABLED){
+        colorOfPixel = renderWithAntialiasing(fragCoord, iResolution.x, iResolution.y, spheres, camera, light);
+    } else {
+        colorOfPixel = render(fragCoord, iResolution.x, iResolution.y, spheres, camera, light);
     }
     
-    void mainImage(out vec4 fragColor, in vec2 fragCoord )
-    {
-        float mouseInput = iMouse.x/100.0;
-        float windowRatio = iResolution.y/iResolution.x;
-        
-        Camera camera = Camera(
-            vec3(cameraPosition),
-            vec3(cameraOrientation),
-            windowRatio,
-            calculateDistanceFromProjectionPlane(windowRatio, START_FOV)
-        );
-        
-        Sphere spheres[SPHERE_COUNT] = Sphere[SPHERE_COUNT](
-            Sphere( // Bigger Sphere
-                vec3(-1.0, BIG_SPHERE_RADIUS,0.0),
-                BIG_SPHERE_RADIUS,
-                vec3(0.1,0.3,0.7),
-                0.1,
-                0.7,
-                128.0,
-                SPHERE_REFLECTIVENESS
-            ),
-            Sphere( // Smaller Sphere
-                vec3(1.0,SMALL_SPHERE_RADIUS,0.0),
-                SMALL_SPHERE_RADIUS,
-                vec3(0.5,0.1,0.4),
-                0.1,
-                0.7,
-                32.0,
-                SPHERE_REFLECTIVENESS
-            ),
-            Sphere( // Floor
-                vec3(0.0,-9000.0,0.0),
-                9000.0,
-                vec3(0.9,0.9,0.9),
-                0.1,
-                0.8,
-                128.0,
-                FLOOR_REFLECTIVENESS
-            ),
-            Sphere( // Ceiling
-                vec3(0.0,9005.0,0.0),
-                9000.0,
-                vec3(0.9,0.9,0.9),
-                0.1,
-                0.8,
-                128.0,
-                CEILING_REFLECTIVENESS
-            ),
-            Sphere( // Left Wall 
-                vec3(-9005.0,0.0,0.0),
-                9000.0,
-                vec3(1.0, 0.0, 0.0),
-                0.1,
-                0.8,
-                128.0,
-                WALL_REFLECTIVENESS
-            ),
-            Sphere( // Right Wall
-                vec3(9005.0,0.0,0.0),
-                9000.0,
-                vec3(0.0, 0.0, 1.0),
-                0.1,
-                0.8,
-                128.0,
-                WALL_REFLECTIVENESS
-            ),
-            Sphere( // Front Wall
-                vec3(0.0,0.0,-9005.0),
-                9000.0,
-                vec3(0.9,0.9,0.9),
-                0.1,
-                0.8,
-                128.0,
-                WALL_REFLECTIVENESS
-            ),
-            Sphere( // Back Wall
-                vec3(0.0,0.0,+9015.0),
-                9000.0,
-                vec3(0.9,0.9,0.9),
-                0.1,
-                0.8,
-                128.0,
-                WALL_REFLECTIVENESS
-            )
-         );
-         
-         Light light = Light(
-             vec3(3.0,3.0,3.0),
-             vec3(1.0,1.0,1.0)
-         );
-    
-        vec3 colorOfPixel;
-        if(ANTIALIASING_ENABLED){
-            colorOfPixel = renderWithAntialiasing(fragCoord, iResolution.x, iResolution.y, spheres, camera, light);
-        } else {
-            colorOfPixel = render(fragCoord, iResolution.x, iResolution.y, spheres, camera, light);
-        }
-        
-        fragColor = vec4(colorOfPixel,1.0);
-    }</script>
+    fragColor = vec4(colorOfPixel,1.0);
+}
+  </script>
 
   <script src="https://webgl2fundamentals.org/webgl/resources/webgl-utils.js"></script>
   <script src="index.js"></script>
